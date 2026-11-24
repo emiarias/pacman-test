@@ -13,6 +13,10 @@ const OPPOSITE = { left: 'right', right: 'left', up: 'down', down: 'up' };
 const PACMAN_SPEED = 0.125; // 1/8 celda/frame -> alinea cada 8 frames
 const GHOST_SPEED = 0.1;    // 1/10 celda/frame
 
+// Ciclo scatter/chase en frames (~60fps): ~7s en esquinas, ~20s cazando.
+const SCATTER_FRAMES = 420;
+const CHASE_FRAMES = 1200;
+
 // Crea una partida nueva. Copia MAZE (pristino) a game.grid para poder comer
 // dots sin destruir el original, y reiniciar.
 function createGame() {
@@ -29,6 +33,10 @@ function createGame() {
     lives: 3,
     dotsRemaining: dots,
     grid,
+    mode: {
+      current: 'scatter',
+      framesLeft: SCATTER_FRAMES,
+    },
     pacman: {
       x: PACMAN_START.x,
       y: PACMAN_START.y,
@@ -42,6 +50,9 @@ function createGame() {
       dir: 'up',
       speed: GHOST_SPEED,
       kind: g.kind,
+      corner: g.corner,
+      inPen: g.exitDelay > 0,
+      exitTimer: g.exitDelay,
     } ) ),
   };
 }
