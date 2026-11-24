@@ -51,7 +51,7 @@ function createGame() {
       speed: GHOST_SPEED,
       kind: g.kind,
       corner: g.corner,
-      inPen: g.exitDelay > 0,
+      inPen: true, // dentro de la pen (fisico); baja al cruzar la puerta
       exitTimer: g.exitDelay,
     } ) ),
   };
@@ -121,9 +121,44 @@ function movePacman( game ) {
   wrapTunnel( p, width );
 }
 
+// Celda objetivo del fantasma segun su personalidad y el modo global.
+// En scatter todos apuntan a su esquina (atractor, no necesita ser caminable).
+function ghostTarget( game, g ) {
+  if ( game.mode.current === 'scatter' ) return g.corner;
+
+  const p = game.pacman;
+  const px = Math.round( p.x );
+  const py = Math.round( p.y );
+
+  if ( g.kind === 'hunter' ) {
+    // Blinky: directo a pacman (agresivo).
+    return { x: px, y: py };
+  }
+
+  if ( g.kind === 'ambusher' ) {
+    // Pinky: 4 celdas adelante de la direccion de pacman.
+    const d = DIRS[ p.dir ];
+    return { x: px + d.x * 4, y: py + d.y * 4 };
+  }
+
+  if ( g.kind === 'flanker' ) {
+    // Inky: duplica el vector Blinky -> (2 celdas adelante de pacman).
+    const blinky = game.ghosts.find( ( b ) => b.kind === 'hunter' );
+    const d = DIRS[ p.dir ];
+    const ax = px + d.x * 2;
+    const ay = py + d.y * 2;
+    if ( !blinky ) return { x: ax, y: ay };
+    return { x: ax * 2 - Math.round( blinky.x ), y: ay * 2 - Math.round( blinky.y ) };
+  }
+
+  // patrol (Clyde): persigue lejos; a <= 8 celdas se replega a su esquina.
+  const dist = Math.abs( g.x - px ) + Math.abs( g.y - py );
+  return dist > 8 ? { x: px, y: py } : g.corner;
+}
+
 function decideGhost( game, g ) {
   const grid = game.grid;
-  const p = game.pacman;
+  const target = ghostTarget( game, g );
 
   const options = Object.keys( DIRS ).filter(
     ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, 'ghost' )
@@ -131,30 +166,31 @@ function decideGhost( game, g ) {
   // Sin salida (callejon): permitir el giro de 180.
   const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
 
-  if ( g.kind === 'hunter' ) {
-    const px = Math.round( p.x );
-    const py = Math.round( p.y );
-    let best = choices[ 0 ];
-    let bestDist = Infinity;
-    for ( const dir of choices ) {
-      const d = DIRS[ dir ];
-      const nx = g.x + d.x;
-      const ny = g.y + d.y;
-      const dist = Math.abs( nx - px ) + Math.abs( ny - py );
-      if ( dist < bestDist ) {
-        bestDist = dist;
-        best = dir;
-      }
+  // Greedy: la direccion que minimiza la distancia Manhattan al target.
+  let best = choices[ 0 ];
+  let bestDist = Infinity;
+  for ( const dir of choices ) {
+    const d = DIRS[ dir ];
+    const nx = g.x + d.x;
+    const ny = g.y + d.y;
+    const dist = Math.abs( nx - target.x ) + Math.abs( ny - target.y );
+    if ( dist < bestDist ) {
+      bestDist = dist;
+      best = dir;
     }
-    g.dir = best;
-  } else {
-    g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
   }
+  g.dir = best;
 }
 
 function moveGhost( game, g ) {
   const grid = game.grid;
   const width = grid[ 0 ].length;
+
+  // Espera escalonada en la pen: quieto hasta agotar exitTimer.
+  if ( g.exitTimer > 0 ) {
+    g.exitTimer--;
+    return;
+  }
 
   if ( aligned( g.x ) && aligned( g.y ) ) {
     g.x = Math.round( g.x );
@@ -167,6 +203,10 @@ function moveGhost( game, g ) {
   g.x += d.x * g.speed;
   g.y += d.y * g.speed;
   wrapTunnel( g, width );
+
+  // Opcion 1 (ambiguedad resuelta): salio fisicamente de la pen (arriba de
+  // la puerta, y < 12) -> ya no puede volver a entrar.
+  if ( g.inPen && g.y < 12 ) g.inPen = false;
 }
 
 function resetPositions( game ) {
