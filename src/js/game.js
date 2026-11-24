@@ -186,7 +186,21 @@ function collides( a, b ) {
   return Math.abs( a.x - b.x ) < 0.5 && Math.abs( a.y - b.y ) < 0.5;
 }
 
+// Alterna el ciclo global scatter (esquinas) <-> chase (caza) por frames.
+function updateMode( game ) {
+  game.mode.framesLeft--;
+  if ( game.mode.framesLeft > 0 ) return;
+  if ( game.mode.current === 'scatter' ) {
+    game.mode.current = 'chase';
+    game.mode.framesLeft = CHASE_FRAMES;
+  } else {
+    game.mode.current = 'scatter';
+    game.mode.framesLeft = SCATTER_FRAMES;
+  }
+}
+
 function update( game ) {
+  updateMode( game );
   movePacman( game );
   game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
 
