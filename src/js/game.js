@@ -63,13 +63,16 @@ function aligned( v ) {
 
 // Una celda es muro para el actor dado?
 //   pacman: bloqueado por pared (1) y puerta (3)
-//   ghost:  bloqueado solo por pared (1)
+//   ghost:  bloqueado por pared (1); la puerta solo si ya salio de la pen
 function isWall( grid, x, y, actor ) {
   if ( y < 0 || y >= grid.length ) return true;
   if ( x < 0 || x >= grid[ 0 ].length ) return true;
   const v = grid[ y ][ x ];
   if ( v === 1 ) return true;
-  if ( v === 3 && actor === 'pacman' ) return true;
+  if ( v === 3 ) {
+    if ( actor === 'pacman' ) return true;
+    return !actor.inPen; // fantasma ya salido: la puerta es muro (no re-entra)
+  }
   return false;
 }
 
@@ -161,7 +164,7 @@ function decideGhost( game, g ) {
   const target = ghostTarget( game, g );
 
   const options = Object.keys( DIRS ).filter(
-    ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, 'ghost' )
+    ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, g )
   );
   // Sin salida (callejon): permitir el giro de 180.
   const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
@@ -196,7 +199,7 @@ function moveGhost( game, g ) {
     g.x = Math.round( g.x );
     g.y = Math.round( g.y );
     decideGhost( game, g );
-    if ( !canMove( grid, g.x, g.y, g.dir, 'ghost' ) ) return;
+    if ( !canMove( grid, g.x, g.y, g.dir, g ) ) return;
   }
 
   const d = DIRS[ g.dir ];
@@ -216,10 +219,15 @@ function resetPositions( game ) {
   p.dir = 'left';
   p.nextDir = null;
   game.ghosts.forEach( ( g, i ) => {
-    g.x = GHOST_STARTS[ i ].x;
-    g.y = GHOST_STARTS[ i ].y;
+    const start = GHOST_STARTS[ i ];
+    g.x = start.x;
+    g.y = start.y;
     g.dir = 'up';
+    g.inPen = true;
+    g.exitTimer = start.exitDelay;
   } );
+  game.mode.current = 'scatter';
+  game.mode.framesLeft = SCATTER_FRAMES;
 }
 
 function collides( a, b ) {
