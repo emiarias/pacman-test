@@ -66,14 +66,18 @@ function drawDoor( ctx, grid ) {
   ctx.stroke();
 }
 
-function drawDots( ctx, grid ) {
+function drawDots( ctx, grid, frame ) {
   ctx.fillStyle = DOT_COLOR;
+  // Power pellet: parpadeo ~3 veces por segundo (10 frames on / 10 off).
+  const pelletVisible = Math.floor( frame / 10 ) % 2 === 0;
   for ( let y = 0; y < grid.length; y++ ) {
     for ( let x = 0; x < grid[ 0 ].length; x++ ) {
-      if ( grid[ y ][ x ] !== 2 ) continue;
+      const v = grid[ y ][ x ];
+      if ( v !== 2 && v !== 4 ) continue;
+      if ( v === 4 && !pelletVisible ) continue;
       const { cx, cy } = cellCenter( x, y );
       ctx.beginPath();
-      ctx.arc( cx, cy, 2.5, 0, Math.PI * 2 );
+      ctx.arc( cx, cy, v === 4 ? 6 : 2.5, 0, Math.PI * 2 );
       ctx.fill();
     }
   }
@@ -98,7 +102,12 @@ function drawPacman( ctx, p, frame ) {
   ctx.fill();
 }
 
-function drawGhost( ctx, g, color ) {
+// Fright: cuerpo azul; en los ultimos FRIGHTENED_FLASH frames alterna
+// azul/blanco (~3 veces por seg) como aviso de que expira.
+const FRIGHT_BODY = '#2121de';
+const FRIGHT_FLASH = '#ffffff';
+
+function drawGhost( ctx, g, color, frightLeft, frame ) {
   const { cx, cy } = cellCenter( g.x, g.y );
   const r = TILE / 2 - 1;
   const top = cy - r;
@@ -106,7 +115,14 @@ function drawGhost( ctx, g, color ) {
   const left = cx - r;
   const right = cx + r;
 
-  ctx.fillStyle = color;
+  let body = color;
+  if ( frightLeft > 0 ) {
+    body = frightLeft <= FRIGHTENED_FLASH && Math.floor( frame / 10 ) % 2 === 0
+      ? FRIGHT_FLASH
+      : FRIGHT_BODY;
+  }
+
+  ctx.fillStyle = body;
   ctx.beginPath();
   ctx.arc( cx, cy - 1, r, Math.PI, 0, false ); // cabeza
   ctx.lineTo( right, bottom );
@@ -162,9 +178,11 @@ function draw( ctx, game, frame ) {
 
   drawWalls( ctx, grid );
   drawDoor( ctx, grid );
-  drawDots( ctx, grid );
+  drawDots( ctx, grid, frame );
   drawPacman( ctx, game.pacman, frame );
-  game.ghosts.forEach( ( g ) => drawGhost( ctx, g, GHOST_COLORS[ g.kind ] || '#ff0000' ) );
+  game.ghosts.forEach( ( g ) =>
+    drawGhost( ctx, g, GHOST_COLORS[ g.kind ] || '#ff0000', game.fright.framesLeft, frame )
+  );
   drawHUD( ctx, game, W );
 }
 
