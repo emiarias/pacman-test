@@ -1,6 +1,6 @@
 # SPEC 02 — Power pellets: pacman come fantasmas
 
-> **Status:** Approved
+> **Status:** Implemented
 > **Depends on:** SPEC 01
 > **Date:** 2026-11-25
 > **Objective:** Cuatro power pellets activan un modo frightened (~8s) donde los fantasmas huyen más lento, se vuelven comibles y valen 200/400/800/1600 puntos.

@@ -261,10 +261,14 @@ function resetPositions( game ) {
     g.y = start.y;
     g.dir = 'up';
     g.inPen = true;
+    g.eaten = false; // revive si estaba esperando respawn
     g.exitTimer = start.exitDelay;
   } );
   game.mode.current = 'scatter';
   game.mode.framesLeft = SCATTER_FRAMES;
+  // El fright y su contador mueren con la vida: el ciclo queda limpio.
+  game.fright.framesLeft = 0;
+  game.ghostsEaten = 0;
 }
 
 function collides( a, b ) {
