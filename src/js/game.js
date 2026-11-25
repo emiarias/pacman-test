@@ -22,6 +22,7 @@ const FRIGHTENED_FRAMES = 480;    // ~8s a 60fps
 const FRIGHTENED_FLASH = 120;     // ultimos ~2s: aviso de expiracion
 const GHOST_FRIGHT_SPEED = 0.05;  // 50% de GHOST_SPEED
 const GHOST_RESPAWN_DELAY = 60;   // frames que espera en pen tras ser comido
+const GHOST_SCORES = [ 200, 400, 800, 1600 ]; // duplicador clasico
 
 // Crea una partida nueva. Copia MAZE (pristino) a game.grid para poder comer
 // dots sin destruir el original, y reiniciar.
@@ -62,6 +63,7 @@ function createGame() {
       corner: g.corner,
       inPen: true, // dentro de la pen (fisico); baja al cruzar la puerta
       exitTimer: g.exitDelay,
+      eaten: false, // comido: esperando respawn en pen (no colisiona)
     } ) ),
   };
 }
@@ -222,6 +224,8 @@ function moveGhost( game, g ) {
   // Espera escalonada en la pen: quieto hasta agotar exitTimer.
   if ( g.exitTimer > 0 ) {
     g.exitTimer--;
+    // Respawn completo: el fantasma comido vuelve al juego.
+    if ( g.exitTimer === 0 ) g.eaten = false;
     return;
   }
 
@@ -292,15 +296,32 @@ function update( game ) {
   game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
 
   for ( const g of game.ghosts ) {
-    if ( collides( game.pacman, g ) ) {
-      game.lives--;
-      if ( game.lives <= 0 ) {
-        game.state = 'lost';
-        return;
-      }
-      resetPositions( game );
-      break;
+    // Fantasma comido esperando respawn: no colisiona.
+    if ( g.eaten ) continue;
+    if ( !collides( game.pacman, g ) ) continue;
+
+    if ( game.fright.framesLeft > 0 ) {
+      // Pacman se come al fantasma: duplicador clasico 200 -> 400 -> 800 -> 1600.
+      game.score += GHOST_SCORES[ Math.min( game.ghostsEaten, GHOST_SCORES.length - 1 ) ];
+      game.ghostsEaten++;
+      // Respawn directo en su entrada de GHOST_STARTS (posicion original).
+      const start = GHOST_STARTS[ game.ghosts.indexOf( g ) ];
+      g.x = start.x;
+      g.y = start.y;
+      g.dir = 'up';
+      g.inPen = true;
+      g.eaten = true;
+      g.exitTimer = GHOST_RESPAWN_DELAY;
+      continue; // el fright sigue: pacman no pierde vida
     }
+
+    game.lives--;
+    if ( game.lives <= 0 ) {
+      game.state = 'lost';
+      return;
+    }
+    resetPositions( game );
+    break;
   }
 
   if ( game.dotsRemaining <= 0 ) game.state = 'won';
