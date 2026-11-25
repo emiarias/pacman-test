@@ -146,6 +146,17 @@ function movePacman( game ) {
 // Celda objetivo del fantasma segun su personalidad y el modo global.
 // En scatter todos apuntan a su esquina (atractor, no necesita ser caminable).
 function ghostTarget( game, g ) {
+  // Fright: huyen de pacman. El greedy de decideGhost() minimiza distancia
+  // al target, asi que usar el reflejo de pacman respecto al fantasma
+  // equivale a maximizar la distancia a pacman.
+  if ( game.fright.framesLeft > 0 ) {
+    const p = game.pacman;
+    return {
+      x: 2 * Math.round( g.x ) - Math.round( p.x ),
+      y: 2 * Math.round( g.y ) - Math.round( p.y ),
+    };
+  }
+
   if ( game.mode.current === 'scatter' ) return g.corner;
 
   const p = game.pacman;
@@ -221,9 +232,12 @@ function moveGhost( game, g ) {
     if ( !canMove( grid, g.x, g.y, g.dir, g ) ) return;
   }
 
+  // En fright se mueve a mitad de velocidad; se deriva del estado global
+  // (sin mutar g.speed base, que queda para el modo normal).
+  const speed = game.fright.framesLeft > 0 ? GHOST_FRIGHT_SPEED : g.speed;
   const d = DIRS[ g.dir ];
-  g.x += d.x * g.speed;
-  g.y += d.y * g.speed;
+  g.x += d.x * speed;
+  g.y += d.y * speed;
   wrapTunnel( g, width );
 
   // Opcion 1 (ambiguedad resuelta): salio fisicamente de la pen (arriba de
@@ -267,7 +281,13 @@ function updateMode( game ) {
 }
 
 function update( game ) {
-  updateMode( game );
+  // Mientras dura el fright el ciclo scatter/chase se congela (reanuda donde
+  // quedo); el timer de fright corre en su lugar.
+  if ( game.fright.framesLeft > 0 ) {
+    game.fright.framesLeft--;
+  } else {
+    updateMode( game );
+  }
   movePacman( game );
   game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
 
