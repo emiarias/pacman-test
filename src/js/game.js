@@ -17,6 +17,12 @@ const GHOST_SPEED = 0.1;    // 1/10 celda/frame
 const SCATTER_FRAMES = 420;
 const CHASE_FRAMES = 1200;
 
+// Modo frightened (power pellet).
+const FRIGHTENED_FRAMES = 480;    // ~8s a 60fps
+const FRIGHTENED_FLASH = 120;     // ultimos ~2s: aviso de expiracion
+const GHOST_FRIGHT_SPEED = 0.05;  // 50% de GHOST_SPEED
+const GHOST_RESPAWN_DELAY = 60;   // frames que espera en pen tras ser comido
+
 // Crea una partida nueva. Copia MAZE (pristino) a game.grid para poder comer
 // dots sin destruir el original, y reiniciar.
 function createGame() {
@@ -38,6 +44,8 @@ function createGame() {
       current: 'scatter',
       framesLeft: SCATTER_FRAMES,
     },
+    fright: { framesLeft: 0 },
+    ghostsEaten: 0, // fantasmas comidos con el pellet actual (duplicador)
     pacman: {
       x: PACMAN_START.x,
       y: PACMAN_START.y,
@@ -114,6 +122,16 @@ function movePacman( game ) {
       grid[ p.y ][ p.x ] = 0;
       game.score += 10;
       game.dotsRemaining--;
+    }
+    // Comer power pellet: activa el modo frightened.
+    if ( grid[ p.y ][ p.x ] === 4 ) {
+      grid[ p.y ][ p.x ] = 0;
+      game.score += 50;
+      game.dotsRemaining--;
+      game.fright.framesLeft = FRIGHTENED_FRAMES;
+      game.ghostsEaten = 0;
+      // Comportamiento del arcade: cada fantasma invierte su direccion.
+      game.ghosts.forEach( ( g ) => { g.dir = OPPOSITE[ g.dir ]; } );
     }
     // Si no puede seguir, se detiene en la celda.
     if ( !canMove( grid, p.x, p.y, p.dir, 'pacman' ) ) return;
