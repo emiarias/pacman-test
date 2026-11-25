@@ -17,6 +17,13 @@ const GHOST_SPEED = 0.1;    // 1/10 celda/frame
 const SCATTER_FRAMES = 420;
 const CHASE_FRAMES = 1200;
 
+// Modo frightened (power pellet).
+const FRIGHTENED_FRAMES = 480;    // ~8s a 60fps
+const FRIGHTENED_FLASH = 120;     // ultimos ~2s: aviso de expiracion
+const GHOST_FRIGHT_SPEED = 0.05;  // 50% de GHOST_SPEED
+const GHOST_RESPAWN_DELAY = 60;   // frames que espera en pen tras ser comido
+const GHOST_SCORES = [ 200, 400, 800, 1600 ]; // duplicador clasico
+
 // Crea una partida nueva. Copia MAZE (pristino) a game.grid para poder comer
 // dots sin destruir el original, y reiniciar.
 function createGame() {
@@ -25,7 +32,8 @@ function createGame() {
   grid[ PACMAN_START.y ][ PACMAN_START.x ] = 0;
 
   let dots = 0;
-  for ( const row of grid ) for ( const v of row ) if ( v === 2 ) dots++;
+  // Dots y power pellets cuentan para dotsRemaining: ganar requiere comerlos.
+  for ( const row of grid ) for ( const v of row ) if ( v === 2 || v === 4 ) dots++;
 
   return {
     state: 'start',
@@ -37,6 +45,8 @@ function createGame() {
       current: 'scatter',
       framesLeft: SCATTER_FRAMES,
     },
+    fright: { framesLeft: 0 },
+    ghostsEaten: 0, // fantasmas comidos con el pellet actual (duplicador)
     pacman: {
       x: PACMAN_START.x,
       y: PACMAN_START.y,
@@ -53,6 +63,7 @@ function createGame() {
       corner: g.corner,
       inPen: true, // dentro de la pen (fisico); baja al cruzar la puerta
       exitTimer: g.exitDelay,
+      eaten: false, // comido: esperando respawn en pen (no colisiona)
     } ) ),
   };
 }
@@ -114,6 +125,16 @@ function movePacman( game ) {
       game.score += 10;
       game.dotsRemaining--;
     }
+    // Comer power pellet: activa el modo frightened.
+    if ( grid[ p.y ][ p.x ] === 4 ) {
+      grid[ p.y ][ p.x ] = 0;
+      game.score += 50;
+      game.dotsRemaining--;
+      game.fright.framesLeft = FRIGHTENED_FRAMES;
+      game.ghostsEaten = 0;
+      // Comportamiento del arcade: cada fantasma invierte su direccion.
+      game.ghosts.forEach( ( g ) => { g.dir = OPPOSITE[ g.dir ]; } );
+    }
     // Si no puede seguir, se detiene en la celda.
     if ( !canMove( grid, p.x, p.y, p.dir, 'pacman' ) ) return;
   }
@@ -127,6 +148,17 @@ function movePacman( game ) {
 // Celda objetivo del fantasma segun su personalidad y el modo global.
 // En scatter todos apuntan a su esquina (atractor, no necesita ser caminable).
 function ghostTarget( game, g ) {
+  // Fright: huyen de pacman. El greedy de decideGhost() minimiza distancia
+  // al target, asi que usar el reflejo de pacman respecto al fantasma
+  // equivale a maximizar la distancia a pacman.
+  if ( game.fright.framesLeft > 0 ) {
+    const p = game.pacman;
+    return {
+      x: 2 * Math.round( g.x ) - Math.round( p.x ),
+      y: 2 * Math.round( g.y ) - Math.round( p.y ),
+    };
+  }
+
   if ( game.mode.current === 'scatter' ) return g.corner;
 
   const p = game.pacman;
@@ -192,6 +224,8 @@ function moveGhost( game, g ) {
   // Espera escalonada en la pen: quieto hasta agotar exitTimer.
   if ( g.exitTimer > 0 ) {
     g.exitTimer--;
+    // Respawn completo: el fantasma comido vuelve al juego.
+    if ( g.exitTimer === 0 ) g.eaten = false;
     return;
   }
 
@@ -202,9 +236,12 @@ function moveGhost( game, g ) {
     if ( !canMove( grid, g.x, g.y, g.dir, g ) ) return;
   }
 
+  // En fright se mueve a mitad de velocidad; se deriva del estado global
+  // (sin mutar g.speed base, que queda para el modo normal).
+  const speed = game.fright.framesLeft > 0 ? GHOST_FRIGHT_SPEED : g.speed;
   const d = DIRS[ g.dir ];
-  g.x += d.x * g.speed;
-  g.y += d.y * g.speed;
+  g.x += d.x * speed;
+  g.y += d.y * speed;
   wrapTunnel( g, width );
 
   // Opcion 1 (ambiguedad resuelta): salio fisicamente de la pen (arriba de
@@ -224,10 +261,14 @@ function resetPositions( game ) {
     g.y = start.y;
     g.dir = 'up';
     g.inPen = true;
+    g.eaten = false; // revive si estaba esperando respawn
     g.exitTimer = start.exitDelay;
   } );
   game.mode.current = 'scatter';
   game.mode.framesLeft = SCATTER_FRAMES;
+  // El fright y su contador mueren con la vida: el ciclo queda limpio.
+  game.fright.framesLeft = 0;
+  game.ghostsEaten = 0;
 }
 
 function collides( a, b ) {
@@ -248,20 +289,43 @@ function updateMode( game ) {
 }
 
 function update( game ) {
-  updateMode( game );
+  // Mientras dura el fright el ciclo scatter/chase se congela (reanuda donde
+  // quedo); el timer de fright corre en su lugar.
+  if ( game.fright.framesLeft > 0 ) {
+    game.fright.framesLeft--;
+  } else {
+    updateMode( game );
+  }
   movePacman( game );
   game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
 
   for ( const g of game.ghosts ) {
-    if ( collides( game.pacman, g ) ) {
-      game.lives--;
-      if ( game.lives <= 0 ) {
-        game.state = 'lost';
-        return;
-      }
-      resetPositions( game );
-      break;
+    // Fantasma comido esperando respawn: no colisiona.
+    if ( g.eaten ) continue;
+    if ( !collides( game.pacman, g ) ) continue;
+
+    if ( game.fright.framesLeft > 0 ) {
+      // Pacman se come al fantasma: duplicador clasico 200 -> 400 -> 800 -> 1600.
+      game.score += GHOST_SCORES[ Math.min( game.ghostsEaten, GHOST_SCORES.length - 1 ) ];
+      game.ghostsEaten++;
+      // Respawn directo en su entrada de GHOST_STARTS (posicion original).
+      const start = GHOST_STARTS[ game.ghosts.indexOf( g ) ];
+      g.x = start.x;
+      g.y = start.y;
+      g.dir = 'up';
+      g.inPen = true;
+      g.eaten = true;
+      g.exitTimer = GHOST_RESPAWN_DELAY;
+      continue; // el fright sigue: pacman no pierde vida
     }
+
+    game.lives--;
+    if ( game.lives <= 0 ) {
+      game.state = 'lost';
+      return;
+    }
+    resetPositions( game );
+    break;
   }
 
   if ( game.dotsRemaining <= 0 ) game.state = 'won';
@@ -270,3 +334,4 @@ function update( game ) {
 window.createGame = createGame;
 window.update = update;
 window.DIRS = DIRS;
+window.FRIGHTENED_FLASH = FRIGHTENED_FLASH;

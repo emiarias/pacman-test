@@ -1,6 +1,6 @@
 # SPEC 01 — Cuatro fantasmas con IA clásica
 
-> **Status:** Approved
+> **Status:** Implemented
 > **Depends on:** —
 > **Date:** 2026-11-24
 > **Objective:** Los 4 fantasmas (Blinky, Pinky, Inky, Clyde) actúan con su IA clásica del arcade, salen escalonados de la pen y alternan ciclos scatter/chase.
